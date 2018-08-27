@@ -1,6 +1,7 @@
 angular.module('ez.timepicker', [])
 
 .constant('TimepickerConfig', {
+  mode                : 'default',
   yearStep            : 1,
   monthStep           : 1,
   dayStep             : 1,
@@ -17,10 +18,11 @@ angular.module('ez.timepicker', [])
   showMeridian        : 'true',
   inputContainerClass : 'input-group',
   incIconClass        : 'icon-chevron-up',
-  decIconClass        : 'icon-chevron-down'
+  decIconClass        : 'icon-chevron-down',
+  zeroValue           : 'PT0S'
 })
 
-.directive('ezTimepicker', ['TimepickerConfig', function(TimepickerConfig) {
+.directive('ezTimepicker', ['TimepickerConfig', '$log', function(TimepickerConfig, $log) {
   return {
     restrict: 'EA',
     replace: true,
@@ -34,6 +36,8 @@ angular.module('ez.timepicker', [])
       _scope = scope;
       _element = element;
       _attrs = attrs;
+      scope.iso8601Regex        = /^[\+\-]?P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d+[HMS])(\d+H)?(\d+M)?(\d+S)?)?$/;
+      scope.mode                = attrs.mode || TimepickerConfig.mode;
       scope.yearStep            = parseInt(attrs.yearStep, 1) || TimepickerConfig.yearStep;
       scope.monthStep           = parseInt(attrs.monthStep, 1) || TimepickerConfig.monthStep;
       scope.dayStep             = parseInt(attrs.dayStep, 1) || TimepickerConfig.dayStep;
@@ -51,11 +55,43 @@ angular.module('ez.timepicker', [])
       scope.inputContainerClass = attrs.inputContainerClass || TimepickerConfig.inputContainerClass;
       scope.incIconClass        = attrs.incIconClass || TimepickerConfig.incIconClass;
       scope.decIconClass        = attrs.decIconClass || TimepickerConfig.decIconClass;
+      scope.zeroValue           = attrs.zeroValue || TimepickerConfig.zeroValue;
       scope.widget              = {
         years : 0,
         months : 0,
         days : 0
       };
+
+      var checkMode = function(mode, input) {
+        var defaultDetected = false;
+        var isoDetected = false;
+        if(input.length > 0 && input.indexOf(':') !== -1) {
+          defaultDetected = true;
+        }
+        if(input.length > 0 && input.indexOf('P') === 0) {
+          isoDetected = true;
+        }
+        if(defaultDetected && !isoDetected) {
+          return 'default';
+        }
+        if(!defaultDetected && isoDetected) {
+          return 'iso8601';
+        }
+        return mode;
+      };
+
+      if(scope.time.length > 0 && scope.time.indexOf(':') === -1) {
+        if(scope.mode !== 'iso8601') {
+          $log.warn('Input value does not looks like default duration. Changing mode to ISO8601.');
+        }
+        scope.mode = 'iso8601';
+      }
+      if(scope.time.length > 0 && scope.time.indexOf('P') !== 0) {
+        if(scope.mode !== 'default') {
+          $log.warn('Input value does not looks like ISO8601. Changing mode to default.');
+        }
+        scope.mode = 'default';
+      }
 
       scope.preventDefault = function(e) {
         e.preventDefault();
@@ -223,7 +259,7 @@ angular.module('ez.timepicker', [])
         }
       };
 
-      var formatOutput = function() {
+      var formatOutputDefault = function() {
         scope.time = scope.widget.hours + ':' + scope.widget.minutes + ':' + scope.widget.seconds;
 
         if (scope.showDay && scope.widget.days) {
@@ -241,6 +277,61 @@ angular.module('ez.timepicker', [])
         if (scope.showMeridian) {
           scope.time = scope.time + ' ' + scope.widget.meridian;
         }
+      };
+
+      var formatOutputIso8601 = function() {
+        // borrowed from: https://unpkg.com/ngx-duration-picker@1.4.1/bundles/ngx-duration-picker.umd.js
+        // https://github.com/ShinDarth/ngx-duration-picker/blob/master/src/app/duration-picker/duration-picker.component.ts#L184
+        var output = 'P';
+        var years, months, weeks, days, hours, minutes, seconds;
+
+        years   = parseInt(scope.widget.years, 10);
+        months  = parseInt(scope.widget.months, 10);
+        weeks   = parseInt(scope.widget.weeks, 10);
+        days    = parseInt(scope.widget.days, 10);
+        hours   = parseInt(scope.widget.hours, 10);
+        minutes = parseInt(scope.widget.minutes, 10);
+        seconds = parseInt(scope.widget.seconds, 10);
+
+        if (isNaN(years))   { years = 0; }
+        if (isNaN(months))  { months = 0; }
+        if (isNaN(weeks))   { weeks = 0; }
+        if (isNaN(days))    { days = 0; }
+        if (isNaN(hours))   { hours = 0; }
+        if (isNaN(minutes)) { minutes = 0; }
+        if (isNaN(seconds)) { seconds = 0; }
+
+        if (scope.showYear && years) {
+            output += years + "Y";
+        }
+        if (scope.showMonth && months) {
+            output += months + "M";
+        }
+        if (scope.showWeek && weeks) {
+            output += weeks + "W";
+        }
+        if (scope.showDay && days) {
+            output += days + "D";
+        }
+        if ((scope.showHour && hours)
+            || (scope.showMinute && minutes)
+            || (scope.showSecond && seconds)) {
+            output += 'T';
+            if (scope.showHour && hours) {
+                output += hours + "H";
+            }
+            if (scope.showMinute && minutes) {
+                output += minutes + "M";
+            }
+            if (scope.showSecond && seconds) {
+                output += seconds + "S";
+            }
+        }
+        // if all values are empty, just output null
+        if (output === 'P' || output === '-P') {
+            output = scope.zeroValue;
+        }
+        scope.time = output;
       };
 
       var updateModel = function() {
@@ -295,7 +386,7 @@ angular.module('ez.timepicker', [])
         e.preventDefault();
       };
 
-      var setTime = function(time) {
+      var setTimeDefault = function(time) {
         var timeArray, dTime, years, months, days, hours, minutes, seconds;
 
         if (time) {
@@ -378,12 +469,96 @@ angular.module('ez.timepicker', [])
         formatOutput();
       };
 
-      scope.setTime = setTime;
+      var parseNumber = function (value) {
+        return value ? parseInt(value, 10) : 0;
+      };
+      var setTimeIso8601 = function(time) {
+        var timeArray, dTime, years, months, weeks, days, hours, minutes, seconds;
+
+        if (time) {
+
+          var /** @type {?} */ match = scope.iso8601Regex.exec(time);
+          if (!match) {
+              console.error("DurationPicker: invalid initial value: " + time);
+              return;
+          }
+          years = parseNumber(match[1]);
+          months = parseNumber(match[2]);
+          weeks = parseNumber(match[3]);
+          days = parseNumber(match[4]);
+          hours = parseNumber(match[6]);
+          minutes = parseNumber(match[7]);
+          seconds = parseNumber(match[8]);
+
+          if (isNaN(years))   { years = 0; }
+          if (isNaN(months))  { months = 0; }
+          if (isNaN(weeks))   { weeks = 0; }
+          if (isNaN(days))    { days = 0; }
+          if (isNaN(hours))   { hours = 0; }
+          if (isNaN(minutes)) { minutes = 0; }
+          if (isNaN(seconds)) { seconds = 0; }
+
+        } else { // set current time
+          dTime = new Date();
+          years = 0;
+          months = 0;
+          weeks = 0;
+          days = 0;
+          hours = dTime.getHours();
+          minutes = dTime.getMinutes();
+          seconds = dTime.getSeconds();
+        }
+
+        scope.widget.years = years;
+        scope.widget.months = months;
+        scope.widget.weeks = weeks;
+        scope.widget.days = days;
+        scope.widget.hours = hours;
+        scope.widget.minutes = Math.ceil(minutes / scope.minuteStep) * scope.minuteStep;
+        scope.widget.seconds = Math.ceil(seconds / scope.secondStep) * scope.secondStep;
+
+        formatHours();
+        formatMinutes();
+        formatSeconds();
+
+        formatOutput();
+      };
+
+      var modeFunctions = {
+        default: {
+          setTime: setTimeDefault,
+          formatOutput: formatOutputDefault
+        },
+        iso8601: {
+          setTime: setTimeIso8601,
+          formatOutput: formatOutputIso8601
+        }
+      };
+
+      var setTime;
+      var formatOutput;
+
+      // scope.setTime = setTime;
+      // scope.formatOutput = formatOutput;
+      var setupMode = function(mode) {
+        scope.mode = mode;
+        setTime = modeFunctions[mode].setTime;
+        formatOutput = modeFunctions[mode].formatOutput;
+
+        scope.setTime = setTime;
+        scope.formatOutput = formatOutput;
+      };
+
+      setupMode(scope.mode);
 
       // Listen to paste event in input
       var input = element.find('input').first();
       input.on('blur', function() {
         scope.$apply(function() {
+          var value = input.val();
+          var mode = checkMode(scope.mode, value);
+          setupMode(checkMode(scope.mode, value));
+          $log.debug("inserted value:", value, scope.mode, mode);
           setTime(input.val());
         });
       });
