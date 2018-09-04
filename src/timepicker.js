@@ -15,7 +15,7 @@ angular.module('ez.timepicker', [])
   showHour            : 'true',
   showMinute          : 'true',
   showSecond          : 'true',
-  showMeridian        : 'true',
+  showMeridian        : 'false',
   inputContainerClass : 'input-group',
   incIconClass        : 'icon-chevron-up',
   decIconClass        : 'icon-chevron-down',
@@ -24,7 +24,7 @@ angular.module('ez.timepicker', [])
 
 .directive('ezTimepicker', ['TimepickerConfig', '$log', function(TimepickerConfig, $log) {
   return {
-    restrict: 'EA',
+    restrict: 'AE',
     replace: true,
     transclude: 'element',
     templateUrl: 'ez-timepicker.html',
@@ -525,6 +525,7 @@ angular.module('ez.timepicker', [])
       };
 
       var modeFunctions = {
+        showMeridian: scope.showMeridian,
         default: {
           setTime: setTimeDefault,
           formatOutput: formatOutputDefault
@@ -542,6 +543,13 @@ angular.module('ez.timepicker', [])
       // scope.formatOutput = formatOutput;
       var setupMode = function(mode) {
         scope.mode = mode;
+        if(mode === "iso8601") {
+             modeFunctions.showMeridian = scope.showMeridian;
+             scope.showMeridian = false;
+        }
+        if(mode === "default") {
+            scope.showMeridian = modeFunctions.showMeridian;
+        }
         setTime = modeFunctions[mode].setTime;
         formatOutput = modeFunctions[mode].formatOutput;
 
